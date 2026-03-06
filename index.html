@@ -1,0 +1,1229 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>字幕 · Dual Sub Player</title>
+    <script src="https://unpkg.com/kuromoji@0.1.2/build/kuromoji.js"></script>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;700&family=Noto+Serif+JP:wght@400;700&family=DM+Mono:wght@400;500&display=swap");
+
+      :root {
+        --bg: #080810;
+        --panel: #0e0e1a;
+        --surface: #13131f;
+        --border: #1e1e30;
+        --accent: #7eb8f7;
+        --accent2: #f7c07e;
+        --green: #7ef7a8;
+        --text: #dde0f0;
+        --text-dim: #5a5a7a;
+        --text-muted: #2e2e45;
+        --popup-bg: #080814;
+        --furigana: #7eb8f7;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "DM Mono", monospace;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        user-select: none;
+      }
+
+      /* ── DROP ZONE ── */
+      #dropZone {
+        position: fixed;
+        inset: 0;
+        background: var(--bg);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 36px;
+        z-index: 100;
+      }
+      #dropZone.drag-over {
+        background: #0a0a1e;
+      }
+      #dropZone.hidden {
+        display: none;
+      }
+
+      .drop-title {
+        font-family: "Noto Serif JP", serif;
+        font-size: clamp(2rem, 5vw, 3.5rem);
+        font-weight: 700;
+        color: var(--accent);
+        letter-spacing: 0.05em;
+        text-align: center;
+      }
+      .drop-sub {
+        font-size: 0.65rem;
+        color: var(--text-dim);
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        text-align: center;
+        margin-top: 6px;
+      }
+
+      .drop-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+        max-width: 680px;
+        width: 90%;
+      }
+
+      .drop-box {
+        border: 1px dashed var(--border);
+        border-radius: 6px;
+        padding: 24px 14px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+        transition: all 0.2s;
+        background: var(--panel);
+        position: relative;
+        overflow: hidden;
+      }
+      .drop-box:hover {
+        border-color: var(--accent);
+        background: var(--surface);
+      }
+      .drop-box.loaded {
+        border-color: var(--green);
+        border-style: solid;
+      }
+      .drop-box.loaded .drop-icon {
+        color: var(--green);
+      }
+
+      .drop-icon {
+        font-size: 1.8rem;
+        color: var(--text-dim);
+        transition: color 0.2s;
+      }
+      .drop-label {
+        font-size: 0.58rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+        text-align: center;
+      }
+      .drop-ext {
+        font-size: 0.48rem;
+        color: var(--text-muted);
+        letter-spacing: 0.1em;
+      }
+      .drop-filename {
+        font-size: 0.52rem;
+        color: var(--green);
+        text-align: center;
+        word-break: break-all;
+        display: none;
+      }
+      .drop-box.loaded .drop-filename {
+        display: block;
+      }
+      .drop-box input[type="file"] {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        cursor: pointer;
+      }
+
+      .btn-start {
+        background: var(--accent);
+        color: var(--bg);
+        border: none;
+        font-family: "DM Mono", monospace;
+        font-size: 0.75rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        padding: 14px 44px;
+        cursor: pointer;
+        border-radius: 3px;
+        transition: all 0.2s;
+        opacity: 0.25;
+        pointer-events: none;
+      }
+      .btn-start.ready {
+        opacity: 1;
+        pointer-events: all;
+      }
+      .btn-start.ready:hover {
+        background: #a8d4ff;
+        transform: translateY(-1px);
+      }
+
+      .drop-hint {
+        font-size: 0.55rem;
+        color: var(--text-muted);
+        letter-spacing: 0.15em;
+        text-align: center;
+      }
+
+      /* keyboard hint on drop screen */
+      .key-hints {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+        max-width: 500px;
+        padding: 0 16px;
+      }
+      .key-hint {
+        font-size: 0.5rem;
+        color: var(--text-muted);
+        letter-spacing: 0.1em;
+        border: 1px solid var(--text-muted);
+        border-radius: 2px;
+        padding: 2px 8px;
+      }
+      kbd {
+        color: var(--text-dim);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 2px;
+        padding: 0px 4px;
+        font-family: "DM Mono", monospace;
+        font-size: 0.5rem;
+      }
+
+      /* ── PLAYER ── */
+      #playerWrap {
+        display: none;
+        flex-direction: column;
+        height: 100vh;
+      }
+      #playerWrap.active {
+        display: flex;
+      }
+
+      #videoWrap {
+        position: relative;
+        flex: 1;
+        background: #000;
+        overflow: hidden;
+      }
+      #vid {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+        cursor: none;
+      }
+
+      /* subtitle overlay */
+      #subOverlay {
+        position: absolute;
+        bottom: 72px;
+        left: 0;
+        right: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        pointer-events: none;
+        padding: 0 80px;
+        z-index: 10;
+      }
+
+      #frSubDisplay {
+        font-family: "DM Mono", monospace;
+        font-size: clamp(0.75rem, 1.6vw, 1rem);
+        color: rgba(255, 255, 255, 0.5);
+        text-align: center;
+        line-height: 1.4;
+        text-shadow:
+          0 1px 6px #000,
+          0 0 14px #000;
+        pointer-events: none;
+      }
+
+      #jpSubDisplay {
+        font-family: "Noto Sans JP", sans-serif;
+        font-size: clamp(1.1rem, 2.6vw, 1.75rem);
+        font-weight: 400;
+        color: #fff;
+        text-align: center;
+        line-height: 2.4;
+        text-shadow:
+          0 1px 8px #000,
+          0 0 24px #000;
+        pointer-events: all;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 1px;
+      }
+
+      .jp-token {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        cursor: pointer;
+        padding: 0 2px;
+        border-radius: 3px;
+        transition: background 0.1s;
+        position: relative;
+        line-height: 1;
+      }
+      .jp-token:hover {
+        background: rgba(126, 184, 247, 0.22);
+      }
+      .jp-token.active-tok {
+        background: rgba(126, 184, 247, 0.32);
+      }
+
+      .token-furi {
+        font-size: 0.42em;
+        color: var(--furigana);
+        line-height: 1;
+        min-height: 0.85em;
+        text-align: center;
+        font-family: "Noto Sans JP", sans-serif;
+        text-shadow: 0 1px 5px #000;
+        white-space: nowrap;
+      }
+      .token-text {
+        line-height: 1.2;
+        white-space: nowrap;
+      }
+
+      /* ── POPUP ── */
+      #popup {
+        position: fixed;
+        background: var(--popup-bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 14px 18px;
+        max-width: 300px;
+        min-width: 180px;
+        z-index: 999;
+        display: none;
+        flex-direction: column;
+        gap: 7px;
+        box-shadow:
+          0 12px 48px rgba(0, 0, 0, 0.9),
+          0 0 0 1px rgba(126, 184, 247, 0.08);
+        pointer-events: none;
+      }
+      #popup.vis {
+        display: flex;
+      }
+
+      .pop-word {
+        font-family: "Noto Serif JP", serif;
+        font-size: 1.7rem;
+        font-weight: 700;
+        color: #fff;
+        line-height: 1;
+      }
+      .pop-reading {
+        font-size: 0.72rem;
+        color: var(--accent);
+        letter-spacing: 0.08em;
+      }
+      .pop-pos {
+        font-size: 0.52rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+        border: 1px solid var(--border);
+        padding: 2px 8px;
+        border-radius: 2px;
+        align-self: flex-start;
+      }
+      .pop-div {
+        height: 1px;
+        background: var(--border);
+      }
+      .pop-meanings {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .pop-m {
+        font-size: 0.76rem;
+        color: var(--text);
+        line-height: 1.4;
+      }
+      .pop-m::before {
+        content: "·  ";
+        color: var(--text-dim);
+      }
+
+      /* ── CONTROLS ── */
+      #controls {
+        height: 50px;
+        background: var(--panel);
+        border-top: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 14px;
+        flex-shrink: 0;
+        z-index: 20;
+      }
+
+      .cbtn {
+        background: none;
+        border: none;
+        color: var(--text-dim);
+        cursor: pointer;
+        font-size: 1rem;
+        padding: 6px;
+        border-radius: 4px;
+        transition:
+          color 0.15s,
+          background 0.15s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .cbtn:hover {
+        color: var(--text);
+        background: var(--surface);
+      }
+
+      #progressWrap {
+        flex: 1;
+        height: 4px;
+        background: var(--border);
+        border-radius: 2px;
+        cursor: pointer;
+        position: relative;
+      }
+      #progressFill {
+        height: 100%;
+        background: var(--accent);
+        border-radius: 2px;
+        width: 0%;
+        pointer-events: none;
+      }
+
+      #timeDisp {
+        font-size: 0.58rem;
+        color: var(--text-dim);
+        letter-spacing: 0.05em;
+        white-space: nowrap;
+        min-width: 88px;
+        text-align: right;
+      }
+
+      .offset-ctrl {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .offset-lbl {
+        font-size: 0.48rem;
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        color: var(--text-muted);
+      }
+      .obtn {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--text-dim);
+        font-family: "DM Mono", monospace;
+        font-size: 0.58rem;
+        padding: 2px 5px;
+        cursor: pointer;
+        border-radius: 2px;
+        transition: all 0.15s;
+      }
+      .obtn:hover {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+      .oval {
+        font-size: 0.58rem;
+        color: var(--accent2);
+        min-width: 34px;
+        text-align: center;
+      }
+
+      #volSlider {
+        width: 56px;
+        accent-color: var(--accent);
+        cursor: pointer;
+      }
+
+      .stoggle {
+        font-size: 0.48rem;
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        padding: 3px 7px;
+        border-radius: 2px;
+        cursor: pointer;
+        border: 1px solid var(--border);
+        background: none;
+        color: var(--text-muted);
+        font-family: "DM Mono", monospace;
+        transition: all 0.15s;
+      }
+      .stoggle.on {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .stoggle.fr.on {
+        border-color: var(--accent2);
+        color: var(--accent2);
+      }
+
+      #customCursor {
+        position: fixed;
+        width: 7px;
+        height: 7px;
+        background: var(--accent);
+        border-radius: 50%;
+        pointer-events: none;
+        z-index: 9999;
+        transform: translate(-50%, -50%);
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="customCursor"></div>
+
+    <!-- DROP ZONE -->
+    <div id="dropZone">
+      <div>
+        <div class="drop-title">字幕プレイヤー</div>
+        <div class="drop-sub">Dual Sub · Japanese Learning Player</div>
+      </div>
+
+      <div class="drop-grid">
+        <div class="drop-box" id="boxVideo">
+          <div class="drop-icon">▶</div>
+          <div class="drop-label">Vidéo</div>
+          <div class="drop-filename" id="nameVideo"></div>
+          <div class="drop-ext">.mp4 · .mkv · .webm</div>
+          <input type="file" id="fileVideo" accept="video/*,.mkv" />
+        </div>
+        <div class="drop-box" id="boxJP">
+          <div class="drop-icon">日</div>
+          <div class="drop-label">Sous-titres JP</div>
+          <div class="drop-filename" id="nameJP"></div>
+          <div class="drop-ext">.srt · .vtt · .ass</div>
+          <input type="file" id="fileJP" accept=".srt,.vtt,.ass,.ssa" />
+        </div>
+        <div class="drop-box" id="boxFR">
+          <div class="drop-icon">FR</div>
+          <div class="drop-label">Sous-titres FR/EN</div>
+          <div class="drop-filename" id="nameFR"></div>
+          <div class="drop-ext">.srt · .vtt · .ass</div>
+          <input type="file" id="fileFR" accept=".srt,.vtt,.ass,.ssa" />
+        </div>
+      </div>
+
+      <div
+        style="
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+        "
+      >
+        <button class="btn-start" id="btnStart" onclick="startPlayer()">
+          ▶&nbsp;&nbsp;Lancer
+        </button>
+        <div class="drop-hint">· Seuls les sous-titres JP sont requis ·</div>
+      </div>
+
+      <div class="key-hints">
+        <span class="key-hint"><kbd>Espace</kbd> play/pause</span>
+        <span class="key-hint"><kbd>←</kbd><kbd>→</kbd> ±5s</span>
+        <span class="key-hint"><kbd>j</kbd><kbd>k</kbd> offset JP</span>
+        <span class="key-hint"><kbd>f</kbd><kbd>g</kbd> offset FR</span>
+        <span class="key-hint"><kbd>1</kbd> toggle JP</span>
+        <span class="key-hint"><kbd>2</kbd> toggle FR</span>
+        <span class="key-hint">Hover sur mot → dictionnaire</span>
+      </div>
+    </div>
+
+    <!-- PLAYER -->
+    <div id="playerWrap">
+      <div id="videoWrap" onclick="togglePlay()">
+        <video id="vid" preload="auto"></video>
+        <div id="subOverlay">
+          <div id="jpSubDisplay"></div>
+          <div id="frSubDisplay"></div>
+        </div>
+      </div>
+      <div id="controls">
+        <button
+          class="cbtn"
+          id="btnPlay"
+          onclick="
+            event.stopPropagation();
+            togglePlay();
+          "
+        >
+          ▶
+        </button>
+        <div
+          id="progressWrap"
+          onclick="
+            event.stopPropagation();
+            seekTo(event);
+          "
+        >
+          <div id="progressFill"></div>
+        </div>
+        <div id="timeDisp">0:00 / 0:00</div>
+        <input
+          type="range"
+          id="volSlider"
+          min="0"
+          max="1"
+          step="0.05"
+          value="1"
+          oninput="document.getElementById('vid').volume = this.value"
+          onclick="event.stopPropagation()"
+        />
+        <div class="offset-ctrl">
+          <span class="offset-lbl">JP</span>
+          <button
+            class="obtn"
+            onclick="
+              event.stopPropagation();
+              adjOff('jp', -0.5);
+            "
+          >
+            −
+          </button>
+          <span class="oval" id="jpOff">0.0s</span>
+          <button
+            class="obtn"
+            onclick="
+              event.stopPropagation();
+              adjOff('jp', +0.5);
+            "
+          >
+            +
+          </button>
+        </div>
+        <div class="offset-ctrl">
+          <span class="offset-lbl">FR</span>
+          <button
+            class="obtn"
+            onclick="
+              event.stopPropagation();
+              adjOff('fr', -0.5);
+            "
+          >
+            −
+          </button>
+          <span class="oval" id="frOff">0.0s</span>
+          <button
+            class="obtn"
+            onclick="
+              event.stopPropagation();
+              adjOff('fr', +0.5);
+            "
+          >
+            +
+          </button>
+        </div>
+        <button
+          class="stoggle on"
+          id="togJP"
+          onclick="
+            event.stopPropagation();
+            togSub('jp');
+          "
+        >
+          JP
+        </button>
+        <button
+          class="stoggle fr on"
+          id="togFR"
+          onclick="
+            event.stopPropagation();
+            togSub('fr');
+          "
+        >
+          FR
+        </button>
+        <button
+          class="cbtn"
+          onclick="
+            event.stopPropagation();
+            goBack();
+          "
+          title="Retour"
+          style="font-size: 0.8rem"
+        >
+          ⏏
+        </button>
+      </div>
+    </div>
+
+    <!-- POPUP -->
+    <div id="popup">
+      <div class="pop-word" id="popWord"></div>
+      <div class="pop-reading" id="popReading"></div>
+      <div class="pop-pos" id="popPos"></div>
+      <div class="pop-div"></div>
+      <div class="pop-meanings" id="popMeanings"></div>
+    </div>
+
+    <script>
+      // ═══════════════════════════
+      // STATE
+      // ═══════════════════════════
+      let tokenizer = null;
+      let jpSubs = [],
+        frSubs = [];
+      let jpOff = 0,
+        frOff = 0;
+      let showJP = true,
+        showFR = true;
+      let videoFile = null,
+        jpFile = null,
+        frFile = null;
+      let activeTok = null;
+      let rafId = null;
+      let lastJP = "",
+        lastFR = "";
+      const dictCache = {};
+
+      // ═══════════════════════════
+      // KUROMOJI
+      // ═══════════════════════════
+      kuromoji
+        .builder({ dicPath: "https://unpkg.com/kuromoji@0.1.2/dict" })
+        .build((err, t) => {
+          if (err) {
+            console.warn("Tokenizer unavailable:", err);
+            return;
+          }
+          tokenizer = t;
+        });
+
+      // ═══════════════════════════
+      // FILE INPUTS
+      // ═══════════════════════════
+      function bindFile(inputId, boxId, nameId, type) {
+        document
+          .getElementById(inputId)
+          .addEventListener("change", function () {
+            const f = this.files[0];
+            if (!f) return;
+            if (type === "video") videoFile = f;
+            else if (type === "jp") jpFile = f;
+            else frFile = f;
+            document.getElementById(boxId).classList.add("loaded");
+            document.getElementById(nameId).textContent = f.name;
+            checkReady();
+          });
+      }
+      bindFile("fileVideo", "boxVideo", "nameVideo", "video");
+      bindFile("fileJP", "boxJP", "nameJP", "jp");
+      bindFile("fileFR", "boxFR", "nameFR", "fr");
+
+      function checkReady() {
+        document.getElementById("btnStart").classList.toggle("ready", !!jpFile);
+      }
+
+      // Global drag-drop on drop zone
+      const dz = document.getElementById("dropZone");
+      dz.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dz.classList.add("drag-over");
+      });
+      dz.addEventListener("dragleave", () => dz.classList.remove("drag-over"));
+      dz.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dz.classList.remove("drag-over");
+        [...e.dataTransfer.files].forEach((f) => {
+          const ext = f.name.split(".").pop().toLowerCase();
+          if (["mp4", "mkv", "webm", "avi", "mov"].includes(ext)) {
+            videoFile = f;
+            document.getElementById("boxVideo").classList.add("loaded");
+            document.getElementById("nameVideo").textContent = f.name;
+          } else if (["srt", "vtt", "ass", "ssa"].includes(ext)) {
+            const looksJP = !f.name.match(/\b(fr|en|fra|eng)\b/i);
+            if (!jpFile && looksJP) {
+              jpFile = f;
+              document.getElementById("boxJP").classList.add("loaded");
+              document.getElementById("nameJP").textContent = f.name;
+            } else if (!frFile) {
+              frFile = f;
+              document.getElementById("boxFR").classList.add("loaded");
+              document.getElementById("nameFR").textContent = f.name;
+            }
+          }
+        });
+        checkReady();
+      });
+
+      // ═══════════════════════════
+      // PARSERS
+      // ═══════════════════════════
+      function parseTime(s) {
+        s = s.trim().replace(",", ".");
+        const p = s.split(":");
+        return +p[0] * 3600 + +p[1] * 60 + parseFloat(p[2]);
+      }
+      function strip(s) {
+        return s
+          .replace(/<[^>]+>/g, "")
+          .replace(/\{[^}]*\}/g, "")
+          .replace(/\\[Nn]/g, " ")
+          .trim();
+      }
+      function parseSRT(txt) {
+        const blocks = txt
+          .replace(/\r\n/g, "\n")
+          .replace(/\r/g, "\n")
+          .split(/\n{2,}/);
+        const out = [];
+        for (const b of blocks) {
+          const lines = b.trim().split("\n");
+          let ti = lines.findIndex((l) => l.includes("-->"));
+          if (ti < 0) continue;
+          const [a, b2] = lines[ti].split("-->");
+          const text = lines
+            .slice(ti + 1)
+            .map(strip)
+            .join(" ")
+            .trim();
+          if (text) out.push({ start: parseTime(a), end: parseTime(b2), text });
+        }
+        return out;
+      }
+      function parseVTT(txt) {
+        return parseSRT(
+          txt.replace(/^WEBVTT[^\n]*\n/, "").replace(/NOTE[^\n]*/g, ""),
+        );
+      }
+      function parseASS(txt) {
+        const out = [];
+        const lines = txt.split(/\r?\n/);
+        let inEv = false,
+          fmt = [];
+        for (const l of lines) {
+          if (l.startsWith("[Events]")) {
+            inEv = true;
+            continue;
+          }
+          if (l.startsWith("[") && inEv) break;
+          if (!inEv) continue;
+          if (l.startsWith("Format:")) {
+            fmt = l
+              .replace("Format:", "")
+              .split(",")
+              .map((s) => s.trim());
+            continue;
+          }
+          if (!l.startsWith("Dialogue:")) continue;
+          const vals = l.replace("Dialogue:", "").split(",");
+          const get = (k) => {
+            const i = fmt.indexOf(k);
+            return i < 0
+              ? ""
+              : k === "Text"
+                ? vals.slice(i).join(",")
+                : vals[i];
+          };
+          const t = get("Text")
+            .replace(/\{[^}]*\}/g, "")
+            .replace(/\\[Nn]/g, " ")
+            .trim();
+          if (!t) continue;
+          const pt = (s) => {
+            const p = s.trim().split(":");
+            return +p[0] * 3600 + +p[1] * 60 + parseFloat(p[2]);
+          };
+          out.push({ start: pt(get("Start")), end: pt(get("End")), text: t });
+        }
+        return out;
+      }
+      function parseSubs(txt, name) {
+        const ext = (name || "").split(".").pop().toLowerCase();
+        if (ext === "vtt") return parseVTT(txt);
+        if (ext === "ass" || ext === "ssa") return parseASS(txt);
+        return parseSRT(txt);
+      }
+
+      // ═══════════════════════════
+      // START
+      // ═══════════════════════════
+      async function startPlayer() {
+        if (!jpFile) return;
+        jpSubs = await readSub(jpFile);
+        if (frFile) frSubs = await readSub(frFile);
+        const vid = document.getElementById("vid");
+        if (videoFile) vid.src = URL.createObjectURL(videoFile);
+        document.getElementById("dropZone").classList.add("hidden");
+        document.getElementById("playerWrap").classList.add("active");
+        vid.addEventListener("loadedmetadata", updateProg);
+        document
+          .getElementById("progressWrap")
+          .addEventListener("click", seekTo);
+        document.addEventListener("keydown", onKey);
+        if (videoFile) vid.play();
+        tick();
+      }
+
+      function readSub(f) {
+        return new Promise((res) => {
+          const r = new FileReader();
+          r.onload = (e) => res(parseSubs(e.target.result, f.name));
+          r.readAsText(f, "utf-8");
+        });
+      }
+
+      // ═══════════════════════════
+      // TICK
+      // ═══════════════════════════
+      function tick() {
+        const vid = document.getElementById("vid");
+        const t = vid.currentTime;
+        const jpT = t - jpOff,
+          frT = t - frOff;
+        const jpSub = jpSubs.find((s) => jpT >= s.start && jpT <= s.end);
+        const frSub = frSubs.find((s) => frT >= s.start && frT <= s.end);
+        const jpTxt = jpSub ? jpSub.text : "";
+        const frTxt = frSub ? frSub.text : "";
+        if (jpTxt !== lastJP) {
+          lastJP = jpTxt;
+          renderJP(jpTxt);
+        }
+        if (frTxt !== lastFR) {
+          lastFR = frTxt;
+          renderFR(frTxt);
+        }
+        updateProg();
+        rafId = requestAnimationFrame(tick);
+      }
+
+      // ═══════════════════════════
+      // RENDER SUBS
+      // ═══════════════════════════
+      function toHira(s) {
+        return (s || "").replace(/[\u30a1-\u30f6]/g, (c) =>
+          String.fromCharCode(c.charCodeAt(0) - 0x60),
+        );
+      }
+      function esc(s) {
+        return (s || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function renderJP(txt) {
+        const el = document.getElementById("jpSubDisplay");
+        hidePopup();
+        if (!txt || !showJP) {
+          el.innerHTML = "";
+          return;
+        }
+        if (!tokenizer) {
+          el.innerHTML = `<span class="jp-token"><span class="token-furi"></span><span class="token-text">${esc(txt)}</span></span>`;
+          return;
+        }
+        const tokens = tokenizer.tokenize(txt);
+        el.innerHTML = tokens
+          .map((tok, i) => {
+            const surf = tok.surface_form;
+            const read = tok.reading || "";
+            const hasKanji = /[\u4e00-\u9faf]/.test(surf);
+            const furi = hasKanji ? toHira(read) : "";
+            return (
+              `<span class="jp-token" data-surf="${esc(surf)}" data-read="${esc(read)}" data-pos="${esc(tok.pos || "")}" data-base="${esc(tok.basic_form || surf)}"
+      onmouseenter="showPopup(this,event)" onmouseleave="delayHidePopup()">` +
+              `<span class="token-furi">${esc(furi)}</span>` +
+              `<span class="token-text">${esc(surf)}</span>` +
+              `</span>`
+            );
+          })
+          .join("");
+      }
+
+      function renderFR(txt) {
+        document.getElementById("frSubDisplay").textContent =
+          showFR && txt ? txt : "";
+      }
+
+      // ═══════════════════════════
+      // POPUP
+      // ═══════════════════════════
+      let popTimer = null;
+
+      async function showPopup(el, ev) {
+        clearTimeout(popTimer);
+        if (activeTok) activeTok.classList.remove("active-tok");
+        activeTok = el;
+        el.classList.add("active-tok");
+
+        const surf = el.dataset.surf,
+          read = el.dataset.read;
+        const pos = el.dataset.pos,
+          base = el.dataset.base;
+
+        document.getElementById("popWord").textContent = surf;
+        document.getElementById("popReading").textContent = toHira(read);
+        document.getElementById("popPos").textContent = pos;
+        document.getElementById("popMeanings").innerHTML =
+          '<div class="pop-m" style="color:var(--text-dim)">…</div>';
+
+        const popup = document.getElementById("popup");
+        popup.classList.add("vis");
+        posPopup(ev);
+
+        // for particles/aux, skip Jisho and go straight to posHint
+        let meanings = [];
+        if (!SKIP_POS.has(pos)) {
+          // prefer base form (dictionary form) over surface for lookup
+          const query = base && base !== "*" && base !== surf ? base : surf;
+          meanings = await lookup(query);
+        }
+        if (el !== activeTok) return;
+        if (meanings.length) {
+          document.getElementById("popMeanings").innerHTML = meanings
+            .slice(0, 5)
+            .map((m) => `<div class="pop-m">${esc(m)}</div>`)
+            .join("");
+        } else {
+          const hint = posHint(pos, surf);
+          document.getElementById("popMeanings").innerHTML =
+            `<div class="pop-m" style="color:var(--text-dim)">${hint || "—"}</div>`;
+        }
+      }
+
+      function posPopup(ev) {
+        const popup = document.getElementById("popup");
+        const pw = 300,
+          ph = 170;
+        let x = ev.clientX + 14,
+          y = ev.clientY - ph - 14;
+        if (x + pw > window.innerWidth) x = ev.clientX - pw - 14;
+        if (y < 0) y = ev.clientY + 20;
+        popup.style.left = x + "px";
+        popup.style.top = y + "px";
+      }
+
+      function delayHidePopup() {
+        popTimer = setTimeout(hidePopup, 350);
+      }
+      function hidePopup() {
+        document.getElementById("popup").classList.remove("vis");
+        if (activeTok) {
+          activeTok.classList.remove("active-tok");
+          activeTok = null;
+        }
+      }
+
+      // POS hints for grammar tokens
+      function posHint(pos, surf) {
+        const map = {
+          助詞: "Particule grammaticale",
+          助動詞: "Auxiliaire verbal",
+          接続詞: "Conjonction",
+          感動詞: "Interjection",
+          記号: "Ponctuation",
+        };
+        const particleMap = {
+          は: "marqueur de thème",
+          が: "marqueur de sujet",
+          を: "marqueur d'objet",
+          に: "direction / lieu / temps",
+          で: "lieu d'action / moyen",
+          と: "et / avec",
+          も: "aussi",
+          の: "possession / nominalisation",
+          か: "question",
+          よ: "emphase",
+          ね: "approbation / accord",
+          へ: "direction",
+          から: "depuis / parce que",
+          まで: "jusqu'à",
+          より: "que (comparaison)",
+          けど: "mais",
+          し: "et puis",
+        };
+        if (particleMap[surf]) return particleMap[surf];
+        return map[pos] || null;
+      }
+
+      // ═══════════════════════════
+      // DICTIONARY — via local proxy (server.py)
+      // Falls back to kuromoji POS hint if server not running
+      // ═══════════════════════════
+      const SKIP_POS = new Set(["助詞", "助動詞", "記号", "空白", "BOS/EOS"]);
+
+      async function lookup(word) {
+        if (!word || word.length < 2) return [];
+        if (dictCache[word] !== undefined) return dictCache[word];
+        try {
+          const r = await fetch(
+            `http://localhost:8765/lookup?w=${encodeURIComponent(word)}`,
+            { signal: AbortSignal.timeout(4000) },
+          );
+          const d = await r.json();
+          dictCache[word] = d.meanings || [];
+          return dictCache[word];
+        } catch {
+          dictCache[word] = [];
+          return [];
+        }
+      }
+
+      // ═══════════════════════════
+      // CONTROLS
+      // ═══════════════════════════
+      function togglePlay() {
+        const vid = document.getElementById("vid");
+        if (vid.paused) vid.play();
+        else vid.pause();
+        document.getElementById("btnPlay").textContent = vid.paused ? "▶" : "⏸";
+      }
+
+      function updateProg() {
+        const vid = document.getElementById("vid");
+        if (!vid.duration) return;
+        document.getElementById("progressFill").style.width =
+          (vid.currentTime / vid.duration) * 100 + "%";
+        document.getElementById("timeDisp").textContent =
+          `${fmt(vid.currentTime)} / ${fmt(vid.duration)}`;
+        document.getElementById("btnPlay").textContent = vid.paused ? "▶" : "⏸";
+      }
+
+      function seekTo(e) {
+        const vid = document.getElementById("vid");
+        if (!vid.duration) return;
+        const r = document
+          .getElementById("progressWrap")
+          .getBoundingClientRect();
+        vid.currentTime =
+          Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) *
+          vid.duration;
+      }
+
+      function fmt(s) {
+        return `${Math.floor(s / 60)}:${Math.floor(s % 60)
+          .toString()
+          .padStart(2, "0")}`;
+      }
+
+      function adjOff(track, delta) {
+        if (track === "jp") {
+          jpOff = Math.round((jpOff + delta) * 10) / 10;
+          document.getElementById("jpOff").textContent = jpOff.toFixed(1) + "s";
+        } else {
+          frOff = Math.round((frOff + delta) * 10) / 10;
+          document.getElementById("frOff").textContent = frOff.toFixed(1) + "s";
+        }
+        lastJP = "";
+        lastFR = ""; // force re-render
+      }
+
+      function togSub(track) {
+        if (track === "jp") {
+          showJP = !showJP;
+          document.getElementById("togJP").classList.toggle("on", showJP);
+          if (!showJP) document.getElementById("jpSubDisplay").innerHTML = "";
+          else lastJP = "";
+        } else {
+          showFR = !showFR;
+          document.getElementById("togFR").classList.toggle("on", showFR);
+          if (!showFR) document.getElementById("frSubDisplay").textContent = "";
+          else lastFR = "";
+        }
+      }
+
+      function goBack() {
+        const vid = document.getElementById("vid");
+        vid.pause();
+        vid.src = "";
+        cancelAnimationFrame(rafId);
+        document.removeEventListener("keydown", onKey);
+        jpSubs = [];
+        frSubs = [];
+        lastJP = "";
+        lastFR = "";
+        jpOff = 0;
+        frOff = 0;
+        document.getElementById("jpOff").textContent = "0.0s";
+        document.getElementById("frOff").textContent = "0.0s";
+        document.getElementById("jpSubDisplay").innerHTML = "";
+        document.getElementById("frSubDisplay").textContent = "";
+        ["boxVideo", "boxJP", "boxFR"].forEach((id) =>
+          document.getElementById(id).classList.remove("loaded"),
+        );
+        ["nameVideo", "nameJP", "nameFR"].forEach(
+          (id) => (document.getElementById(id).textContent = ""),
+        );
+        videoFile = null;
+        jpFile = null;
+        frFile = null;
+        document.getElementById("btnStart").classList.remove("ready");
+        document.getElementById("playerWrap").classList.remove("active");
+        document.getElementById("dropZone").classList.remove("hidden");
+      }
+
+      // ═══════════════════════════
+      // KEYBOARD
+      // ═══════════════════════════
+      function onKey(e) {
+        if (e.target.tagName === "INPUT") return;
+        const vid = document.getElementById("vid");
+        if (e.code === "Space") {
+          e.preventDefault();
+          togglePlay();
+        }
+        if (e.code === "ArrowLeft")
+          vid.currentTime = Math.max(0, vid.currentTime - 5);
+        if (e.code === "ArrowRight") vid.currentTime += 5;
+        if (e.code === "ArrowUp") {
+          vid.volume = Math.min(1, vid.volume + 0.1);
+          document.getElementById("volSlider").value = vid.volume;
+        }
+        if (e.code === "ArrowDown") {
+          vid.volume = Math.max(0, vid.volume - 0.1);
+          document.getElementById("volSlider").value = vid.volume;
+        }
+        if (e.key === "j") adjOff("jp", -0.5);
+        if (e.key === "k") adjOff("jp", +0.5);
+        if (e.key === "f") adjOff("fr", -0.5);
+        if (e.key === "g") adjOff("fr", +0.5);
+        if (e.key === "1") togSub("jp");
+        if (e.key === "2") togSub("fr");
+      }
+
+      // ═══════════════════════════
+      // CURSOR
+      // ═══════════════════════════
+      const cur = document.getElementById("customCursor");
+      let curT;
+      document.addEventListener("mousemove", (e) => {
+        cur.style.left = e.clientX + "px";
+        cur.style.top = e.clientY + "px";
+        cur.style.opacity = "1";
+        clearTimeout(curT);
+        curT = setTimeout(() => (cur.style.opacity = "0"), 2500);
+      });
+    </script>
+  </body>
+</html>
