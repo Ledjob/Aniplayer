@@ -319,7 +319,7 @@
         box-shadow:
           0 12px 48px rgba(0, 0, 0, 0.9),
           0 0 0 1px rgba(126, 184, 247, 0.08);
-        pointer-events: none;
+        pointer-events: all;
       }
       #popup.vis {
         display: flex;
@@ -497,6 +497,79 @@
         opacity: 0;
         transition: opacity 0.2s;
       }
+
+      /* ── ANKI BUTTON in popup ── */
+      .pop-anki {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        background: none;
+        border: 1px solid #4a6741;
+        color: #7ef7a8;
+        font-family: "DM Mono", monospace;
+        font-size: 0.58rem;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        padding: 6px 12px;
+        border-radius: 3px;
+        cursor: pointer;
+        transition: all 0.2s;
+        width: 100%;
+        margin-top: 2px;
+        pointer-events: all;
+      }
+      .pop-anki:hover {
+        background: rgba(126, 247, 168, 0.12);
+        border-color: #7ef7a8;
+      }
+      .pop-anki.sending {
+        opacity: 0.5;
+        pointer-events: none;
+      }
+      .pop-anki.sent {
+        border-color: #7ef7a8;
+        background: rgba(126, 247, 168, 0.15);
+        color: #7ef7a8;
+      }
+      .pop-anki.error {
+        border-color: #f77e7e;
+        color: #f77e7e;
+      }
+
+      /* ── TOAST ── */
+      #toast {
+        position: fixed;
+        bottom: 70px;
+        left: 50%;
+        transform: translateX(-50%) translateY(12px);
+        background: var(--panel);
+        border: 1px solid var(--border);
+        font-family: "DM Mono", monospace;
+        font-size: 0.62rem;
+        letter-spacing: 0.15em;
+        padding: 9px 20px;
+        border-radius: 3px;
+        z-index: 9000;
+        opacity: 0;
+        transition:
+          opacity 0.25s,
+          transform 0.25s;
+        pointer-events: none;
+        white-space: nowrap;
+      }
+      #toast.show {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+      #toast.ok {
+        border-color: #4a6741;
+        color: #7ef7a8;
+      }
+      #toast.err {
+        border-color: #6b3535;
+        color: #f77e7e;
+      }
     </style>
   </head>
   <body>
@@ -554,7 +627,8 @@
         <span class="key-hint"><kbd>f</kbd><kbd>g</kbd> offset FR</span>
         <span class="key-hint"><kbd>1</kbd> toggle JP</span>
         <span class="key-hint"><kbd>2</kbd> toggle FR</span>
-        <span class="key-hint">Hover sur mot → dictionnaire</span>
+        <span class="key-hint">Hover mot → dictionnaire + Anki</span>
+        <span class="key-hint">Chemin vidéo → audio FFmpeg</span>
       </div>
     </div>
 
@@ -662,6 +736,34 @@
         >
           FR
         </button>
+        <input
+          type="text"
+          id="videoPathInput"
+          placeholder="Chemin vidéo pour FFmpeg…"
+          title="Chemin absolu vers la vidéo pour extraction audio (ex: G:\videos\ep01.mkv)"
+          onclick="event.stopPropagation()"
+          oninput="
+            event.stopPropagation();
+            videoPathOverride = this.value.trim();
+            this.style.borderColor = this.value.trim()
+              ? 'var(--green)'
+              : 'var(--accent2)';
+          "
+          style="
+            background: var(--surface);
+            border: 1px solid var(--accent2);
+            color: var(--text-dim);
+            font-family: &quot;DM Mono&quot;, monospace;
+            font-size: 0.52rem;
+            padding: 3px 8px;
+            border-radius: 3px;
+            width: 200px;
+            outline: none;
+            flex-shrink: 1;
+            min-width: 80px;
+            transition: border-color 0.2s;
+          "
+        />
         <button
           class="cbtn"
           onclick="
@@ -677,13 +779,26 @@
     </div>
 
     <!-- POPUP -->
-    <div id="popup">
+    <div
+      id="popup"
+      onmouseenter="cancelHidePopup()"
+      onmouseleave="delayHidePopup()"
+    >
       <div class="pop-word" id="popWord"></div>
       <div class="pop-reading" id="popReading"></div>
       <div class="pop-pos" id="popPos"></div>
       <div class="pop-div"></div>
       <div class="pop-meanings" id="popMeanings"></div>
+      <button class="pop-anki" id="popAnki" onclick="addToAnki()">
+        <span>＋</span><span>Ajouter à Anki</span>
+      </button>
     </div>
+
+    <!-- TOAST -->
+    <div id="toast"></div>
+
+    <!-- Hidden canvas for video screenshot capture -->
+    <canvas id="snapCanvas" style="display: none"></canvas>
 
     <script>
       // ═══════════════════════════
@@ -703,6 +818,8 @@
       let rafId = null;
       let lastJP = "",
         lastFR = "";
+      let currentJPSub = null; // full sub object {start, end, text}
+      let videoPathOverride = ""; // user-typed absolute path for FFmpeg
       const dictCache = {};
 
       // ═══════════════════════════
@@ -902,6 +1019,7 @@
           frT = t - frOff;
         const jpSub = jpSubs.find((s) => jpT >= s.start && jpT <= s.end);
         const frSub = frSubs.find((s) => frT >= s.start && frT <= s.end);
+        currentJPSub = jpSub || null;
         const jpTxt = jpSub ? jpSub.text : "";
         const frTxt = frSub ? frSub.text : "";
         if (jpTxt !== lastJP) {
@@ -1000,22 +1118,71 @@
           meanings = await lookup(query);
         }
         if (el !== activeTok) return;
+
+        let displayMeaning = "";
         if (meanings.length) {
+          displayMeaning = meanings[0];
           document.getElementById("popMeanings").innerHTML = meanings
             .slice(0, 5)
             .map((m) => `<div class="pop-m">${esc(m)}</div>`)
             .join("");
         } else {
           const hint = posHint(pos, surf);
+          displayMeaning = hint || "";
           document.getElementById("popMeanings").innerHTML =
             `<div class="pop-m" style="color:var(--text-dim)">${hint || "—"}</div>`;
         }
+
+        // ── Populate Anki context ─────────────────────────────────────────
+        const vid = document.getElementById("vid");
+        const timestamp = fmt(vid.currentTime || 0);
+        const sourceName = videoFile
+          ? videoFile.name.replace(/\.[^.]+$/, "")
+          : "unknown";
+        ankiContext = {
+          jp: lastJP,
+          jp_html: buildFuriganaHtml(lastJP), // ruby HTML for JP sentence field
+          fr: lastFR,
+          word: surf, // plain text for dedup (Word field = first field)
+          meaning: displayMeaning,
+          audio: "",
+          image: "",
+          source: `${sourceName}_${timestamp}`,
+          video_path: videoPathOverride,
+          start_time: currentJPSub ? currentJPSub.start : vid.currentTime || 0,
+          end_time: currentJPSub ? currentJPSub.end : vid.currentTime || 0,
+          screenshot: captureFrame(),
+        };
+        // Reset button state
+        const btn = document.getElementById("popAnki");
+        btn.classList.remove("sent", "error", "sending");
+        btn.querySelector("span:last-child").textContent = "Ajouter à Anki";
+      }
+
+      // ── Furigana HTML builder ─────────────────────────────────────────────────────
+      // Generates <ruby> HTML from a Japanese string using Kuromoji
+      // Output: <ruby>学校<rt>がっこう</rt></ruby>へ<ruby>行<rt>い</rt></ruby>った
+      function buildFuriganaHtml(text) {
+        if (!text || !tokenizer) return esc(text);
+        const tokens = tokenizer.tokenize(text);
+        return tokens
+          .map((tok) => {
+            const surf = tok.surface_form;
+            const read = tok.reading || "";
+            const hasKanji = /[\u4e00-\u9faf]/.test(surf);
+            if (!hasKanji || !read) return esc(surf);
+            const hira = toHira(read);
+            // Only add furigana if reading differs from surface
+            if (hira === surf) return esc(surf);
+            return `<ruby>${esc(surf)}<rt>${esc(hira)}</rt></ruby>`;
+          })
+          .join("");
       }
 
       function posPopup(ev) {
         const popup = document.getElementById("popup");
         const pw = 300,
-          ph = 170;
+          ph = 210;
         let x = ev.clientX + 14,
           y = ev.clientY - ph - 14;
         if (x + pw > window.innerWidth) x = ev.clientX - pw - 14;
@@ -1025,7 +1192,10 @@
       }
 
       function delayHidePopup() {
-        popTimer = setTimeout(hidePopup, 350);
+        popTimer = setTimeout(hidePopup, 400);
+      }
+      function cancelHidePopup() {
+        clearTimeout(popTimer);
       }
       function hidePopup() {
         document.getElementById("popup").classList.remove("vis");
@@ -1071,6 +1241,7 @@
       // DICTIONARY — via local proxy (server.py)
       // Falls back to kuromoji POS hint if server not running
       // ═══════════════════════════
+      const SERVER = "http://localhost:8766";
       const SKIP_POS = new Set(["助詞", "助動詞", "記号", "空白", "BOS/EOS"]);
 
       async function lookup(word) {
@@ -1078,7 +1249,7 @@
         if (dictCache[word] !== undefined) return dictCache[word];
         try {
           const r = await fetch(
-            `http://localhost:8765/lookup?w=${encodeURIComponent(word)}`,
+            `${SERVER}/lookup?w=${encodeURIComponent(word)}`,
             { signal: AbortSignal.timeout(4000) },
           );
           const d = await r.json();
@@ -1181,6 +1352,109 @@
         document.getElementById("btnStart").classList.remove("ready");
         document.getElementById("playerWrap").classList.remove("active");
         document.getElementById("dropZone").classList.remove("hidden");
+      }
+
+      // ── Canvas screenshot capture ─────────────────────────────────────────────────
+      function captureFrame() {
+        const vid = document.getElementById("vid");
+        const canvas = document.getElementById("snapCanvas");
+        try {
+          const w = vid.videoWidth || 1280;
+          const h = vid.videoHeight || 720;
+          // cap at 1280px wide
+          const scale = Math.min(1, 1280 / w);
+          canvas.width = Math.round(w * scale);
+          canvas.height = Math.round(h * scale);
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
+          return canvas.toDataURL("image/jpeg", 0.85); // data:image/jpeg;base64,...
+        } catch (e) {
+          console.warn("Canvas capture failed:", e);
+          return "";
+        }
+      }
+
+      // ═══════════════════════════
+      // ANKI INTEGRATION
+      // ═══════════════════════════
+
+      // Tracks the last popup context so addToAnki() knows what to send
+      let ankiContext = { jp: "", fr: "", word: "", meaning: "", source: "" };
+
+      async function addToAnki() {
+        // Always read path fresh from input at send time
+        const pathInput = document.getElementById("videoPathInput");
+        if (pathInput) videoPathOverride = pathInput.value.trim();
+
+        const btn = document.getElementById("popAnki");
+        if (!ankiContext.jp) {
+          showToast("Aucune phrase sélectionnée", false);
+          return;
+        }
+        if (!videoPathOverride)
+          showToast("⚠ Pas de chemin vidéo — audio ignoré", false);
+
+        btn.classList.add("sending");
+        btn.querySelector("span:last-child").textContent = "Envoi…";
+
+        try {
+          const resp = await fetch(`${SERVER}/anki/add-card`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...ankiContext,
+              video_path: videoPathOverride, // always use latest value from input
+            }),
+            signal: AbortSignal.timeout(20000),
+          });
+          const data = await resp.json();
+
+          if (data.success) {
+            btn.classList.remove("sending");
+            btn.classList.add("sent");
+            btn.querySelector("span:last-child").textContent = "✓ Ajouté !";
+            const extras = [
+              data.has_audio ? "🔊" : "",
+              data.has_image ? "🖼" : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
+            showToast(
+              `Carte ajoutée ${extras} — ${ankiContext.word || ankiContext.jp.slice(0, 14)}`,
+              true,
+            );
+            setTimeout(() => {
+              btn.classList.remove("sent");
+              btn.querySelector("span:last-child").textContent =
+                "Ajouter à Anki";
+            }, 2000);
+          } else {
+            throw new Error(data.error || "Erreur inconnue");
+          }
+        } catch (err) {
+          btn.classList.remove("sending");
+          btn.classList.add("error");
+          btn.querySelector("span:last-child").textContent = "✗ Erreur";
+          const msg =
+            err.name === "TimeoutError" || err.message.includes("fetch")
+              ? "Anki fermé ou serveur arrêté"
+              : err.message;
+          showToast(msg, false);
+          console.error("Anki error:", err);
+          setTimeout(() => {
+            btn.classList.remove("error");
+            btn.querySelector("span:last-child").textContent = "Ajouter à Anki";
+          }, 3000);
+        }
+      }
+
+      let toastTimer;
+      function showToast(msg, ok) {
+        const t = document.getElementById("toast");
+        clearTimeout(toastTimer);
+        t.textContent = ok ? `✓  ${msg}` : `✗  ${msg}`;
+        t.className = ok ? "show ok" : "show err";
+        toastTimer = setTimeout(() => (t.className = ""), 3000);
       }
 
       // ═══════════════════════════
