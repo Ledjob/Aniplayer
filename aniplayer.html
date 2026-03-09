@@ -570,6 +570,323 @@
         border-color: #6b3535;
         color: #f77e7e;
       }
+      /* ── AI CHAT PANEL ── */
+      #aiPanel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: min(380px, 100vw);
+        background: var(--panel);
+        border-left: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        z-index: 10000;
+        transform: translateX(100%);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: -12px 0 48px rgba(0, 0, 0, 0.6);
+        user-select: text;
+        pointer-events: all;
+        box-sizing: border-box;
+        right: 0 !important;
+        left: auto !important;
+      }
+      #aiPanel * {
+        pointer-events: all;
+      }
+      #aiPanel.open {
+        transform: translateX(0);
+      }
+
+      #aiPanelHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      .ai-title {
+        font-size: 0.62rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--accent);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .ai-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent);
+        opacity: 0.5;
+      }
+      .ai-dot.active {
+        opacity: 1;
+        animation: pulse 1.4s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.3;
+        }
+      }
+
+      #aiPanelClose {
+        background: none;
+        border: none;
+        color: var(--text-dim);
+        cursor: pointer;
+        font-size: 1rem;
+        padding: 4px 6px;
+        border-radius: 3px;
+        transition:
+          color 0.15s,
+          background 0.15s;
+        line-height: 1;
+      }
+      #aiPanelClose:hover {
+        color: var(--text);
+        background: var(--surface);
+      }
+
+      /* Context bar — shows current subtitle */
+      #aiContext {
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+        background: var(--surface);
+      }
+      .ai-ctx-label {
+        font-size: 0.46rem;
+        text-transform: uppercase;
+        letter-spacing: 0.2em;
+        color: var(--text-muted);
+        margin-bottom: 5px;
+      }
+      .ai-ctx-jp {
+        font-family: "Noto Sans JP", sans-serif;
+        font-size: 0.88rem;
+        color: var(--text);
+        line-height: 1.5;
+      }
+      .ai-ctx-fr {
+        font-size: 0.64rem;
+        color: var(--text-dim);
+        line-height: 1.4;
+        margin-top: 2px;
+      }
+      .ai-ctx-word {
+        font-size: 0.58rem;
+        color: var(--accent2);
+        margin-top: 4px;
+        letter-spacing: 0.05em;
+      }
+
+      /* API key input (shown when no key set) */
+      #aiKeyRow {
+        padding: 8px 16px;
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+        display: none;
+        align-items: center;
+        gap: 6px;
+      }
+      #aiKeyRow.visible {
+        display: flex;
+      }
+      #aiKeyInput {
+        flex: 1;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--text-dim);
+        font-family: "DM Mono", monospace;
+        font-size: 0.55rem;
+        padding: 4px 8px;
+        border-radius: 3px;
+        outline: none;
+      }
+      #aiKeyInput:focus {
+        border-color: var(--accent);
+      }
+      .ai-key-label {
+        font-size: 0.46rem;
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        color: var(--text-muted);
+        white-space: nowrap;
+      }
+
+      /* Messages */
+      #aiMessages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        scroll-behavior: smooth;
+      }
+      #aiMessages::-webkit-scrollbar {
+        width: 4px;
+      }
+      #aiMessages::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      #aiMessages::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 2px;
+      }
+
+      .ai-msg {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        animation: fadeUp 0.2s ease;
+      }
+      @keyframes fadeUp {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      .ai-msg-role {
+        font-size: 0.44rem;
+        text-transform: uppercase;
+        letter-spacing: 0.2em;
+        color: var(--text-muted);
+      }
+      .ai-msg.user .ai-msg-role {
+        color: var(--accent2);
+      }
+      .ai-msg.assistant .ai-msg-role {
+        color: var(--accent);
+      }
+
+      .ai-msg-body {
+        font-size: 0.76rem;
+        line-height: 1.65;
+        color: var(--text);
+        white-space: pre-wrap;
+        font-family: "DM Mono", monospace;
+      }
+      .ai-msg.user .ai-msg-body {
+        color: var(--text-dim);
+        font-style: italic;
+      }
+
+      /* Japanese in responses */
+      .ai-msg-body .jp {
+        font-family: "Noto Sans JP", sans-serif;
+        color: #fff;
+      }
+
+      /* Quick prompt buttons */
+      #aiQuickBtns {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 8px 16px;
+        border-top: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      .ai-quick {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--text-dim);
+        font-family: "DM Mono", monospace;
+        font-size: 0.52rem;
+        padding: 4px 10px;
+        border-radius: 2px;
+        cursor: pointer;
+        transition: all 0.15s;
+        letter-spacing: 0.05em;
+      }
+      .ai-quick:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      /* Input row */
+      #aiInputRow {
+        display: flex;
+        gap: 8px;
+        padding: 12px 16px;
+        border-top: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      #aiInput {
+        flex: 1;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--text);
+        font-family: "DM Mono", monospace;
+        font-size: 0.7rem;
+        padding: 8px 12px;
+        border-radius: 3px;
+        outline: none;
+        resize: none;
+        min-height: 36px;
+        max-height: 100px;
+        transition: border-color 0.15s;
+        user-select: text;
+        pointer-events: all;
+        cursor: text;
+      }
+      #aiInput:focus {
+        border-color: var(--accent);
+      }
+      #aiSendBtn {
+        background: var(--accent);
+        border: none;
+        color: var(--bg);
+        font-family: "DM Mono", monospace;
+        font-size: 0.62rem;
+        letter-spacing: 0.1em;
+        padding: 8px 14px;
+        border-radius: 3px;
+        cursor: pointer;
+        transition: all 0.15s;
+        align-self: flex-end;
+        pointer-events: all;
+        user-select: none;
+      }
+      #aiSendBtn:hover {
+        background: #a8d4ff;
+      }
+      #aiSendBtn:disabled {
+        opacity: 0.4;
+        pointer-events: none;
+      }
+
+      /* AI toggle button in controls */
+      .ai-toggle-btn {
+        font-size: 0.52rem;
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        padding: 3px 8px;
+        border-radius: 2px;
+        cursor: pointer;
+        border: 1px solid var(--border);
+        background: none;
+        color: var(--text-muted);
+        font-family: "DM Mono", monospace;
+        transition: all 0.15s;
+        white-space: nowrap;
+      }
+      .ai-toggle-btn.on {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
     </style>
   </head>
   <body>
@@ -629,6 +946,7 @@
         <span class="key-hint"><kbd>2</kbd> toggle FR</span>
         <span class="key-hint">Hover mot → dictionnaire + Anki</span>
         <span class="key-hint">Chemin vidéo → audio FFmpeg</span>
+        <span class="key-hint"><kbd>a</kbd> chat IA grammaire</span>
       </div>
     </div>
 
@@ -736,6 +1054,17 @@
         >
           FR
         </button>
+        <button
+          class="ai-toggle-btn"
+          id="aiToggleBtn"
+          onclick="
+            event.stopPropagation();
+            toggleAIPanel();
+          "
+          title="Chat IA grammatical (A)"
+        >
+          AI
+        </button>
         <input
           type="text"
           id="videoPathInput"
@@ -799,6 +1128,69 @@
 
     <!-- Hidden canvas for video screenshot capture -->
     <canvas id="snapCanvas" style="display: none"></canvas>
+
+    <!-- AI CHAT PANEL -->
+    <div id="aiPanel">
+      <div id="aiPanelHeader">
+        <div class="ai-title">
+          <div class="ai-dot" id="aiDot"></div>
+          文法アシスタント · Grammaire
+        </div>
+        <button id="aiPanelClose" onclick="toggleAIPanel()">✕</button>
+      </div>
+
+      <!-- API key row hidden - key is set in server.py via ANTHROPIC_API_KEY -->
+      <div id="aiKeyRow" style="display: none"></div>
+
+      <!-- Current subtitle context -->
+      <div id="aiContext">
+        <div class="ai-ctx-label">Sous-titre actuel</div>
+        <div class="ai-ctx-jp" id="aiCtxJP">—</div>
+        <div class="ai-ctx-fr" id="aiCtxFR"></div>
+        <div class="ai-ctx-word" id="aiCtxWord"></div>
+      </div>
+
+      <!-- Message history -->
+      <div id="aiMessages"></div>
+
+      <!-- Quick grammar prompts -->
+      <div id="aiQuickBtns">
+        <button
+          class="ai-quick"
+          onclick="quickAsk('Explique la grammaire de cette phrase.')"
+        >
+          Grammaire
+        </button>
+        <button
+          class="ai-quick"
+          onclick="quickAsk('Décompose les particules de cette phrase.')"
+        >
+          Particules
+        </button>
+        <button
+          class="ai-quick"
+          onclick="quickAsk('Quelle est la forme verbale utilisée ici ?')"
+        >
+          Forme verbale
+        </button>
+        <button
+          class="ai-quick"
+          onclick="quickAsk('Donne un exemple similaire.')"
+        >
+          Exemple
+        </button>
+      </div>
+
+      <!-- Input -->
+      <div id="aiInputRow">
+        <textarea
+          id="aiInput"
+          placeholder="Pose ta question…"
+          rows="1"
+        ></textarea>
+        <button id="aiSendBtn">→</button>
+      </div>
+    </div>
 
     <script>
       // ═══════════════════════════
@@ -1025,10 +1417,12 @@
         if (jpTxt !== lastJP) {
           lastJP = jpTxt;
           renderJP(jpTxt);
+          if (aiOpen) updateAIContext();
         }
         if (frTxt !== lastFR) {
           lastFR = frTxt;
           renderFR(frTxt);
+          if (aiOpen) updateAIContext();
         }
         updateProg();
         rafId = requestAnimationFrame(tick);
@@ -1157,6 +1551,11 @@
         const btn = document.getElementById("popAnki");
         btn.classList.remove("sent", "error", "sending");
         btn.querySelector("span:last-child").textContent = "Ajouter à Anki";
+
+        // Update AI panel selected word context
+        aiSelectedWord = surf;
+        aiSelectedMeaning = displayMeaning;
+        if (aiOpen) updateAIContext();
       }
 
       // ── Furigana HTML builder ─────────────────────────────────────────────────────
@@ -1457,11 +1856,243 @@
         toastTimer = setTimeout(() => (t.className = ""), 3000);
       }
 
+      // ═══════════════════════════════════════
+      // AI CHAT PANEL
+      // ═══════════════════════════════════════
+
+      let aiOpen = false;
+      let aiMessages = [];
+      let aiStreaming = false;
+      let aiSelectedWord = "";
+      let aiSelectedMeaning = "";
+      const AI_MAX_HISTORY = 6; // keep last 6 messages (3 exchanges) to limit tokens
+
+      function toggleAIPanel() {
+        aiOpen = !aiOpen;
+        document.getElementById("aiPanel").classList.toggle("open", aiOpen);
+        document.getElementById("aiToggleBtn").classList.toggle("on", aiOpen);
+        // Block video clicks from bleeding through the panel
+        document.getElementById("videoWrap").style.pointerEvents = aiOpen
+          ? "none"
+          : "";
+        if (aiOpen) {
+          updateAIContext();
+          document.getElementById("aiInput").focus();
+        } else {
+          aiMessages = [];
+          aiSelectedWord = "";
+          aiSelectedMeaning = "";
+          document.getElementById("aiMessages").innerHTML = "";
+        }
+      }
+
+      function checkApiKey() {
+        const row = document.getElementById("aiKeyRow");
+        row.classList.toggle("visible", !aiApiKey);
+      }
+
+      function saveApiKey() {
+        const val = document.getElementById("aiKeyInput").value.trim();
+        if (val) {
+          aiApiKey = val;
+          localStorage.setItem("ai_api_key", val);
+          document.getElementById("aiKeyRow").classList.remove("visible");
+          document.getElementById("aiKeyInput").value = "";
+        }
+      }
+
+      function updateAIContext() {
+        // Update context bar with current subtitle
+        document.getElementById("aiCtxJP").textContent = lastJP || "—";
+        document.getElementById("aiCtxFR").textContent = lastFR || "";
+        document.getElementById("aiCtxWord").textContent = aiSelectedWord
+          ? `mot sélectionné : 「${aiSelectedWord}」 — ${aiSelectedMeaning}`
+          : "";
+      }
+
+      // Collect ±5 subtitle lines around current time for context
+      function getContextSubs() {
+        if (!currentJPSub || !jpSubs.length) return [];
+        const idx = jpSubs.indexOf(currentJPSub);
+        if (idx < 0) return [];
+        const result = [];
+        for (
+          let i = Math.max(0, idx - 4);
+          i <= Math.min(jpSubs.length - 1, idx + 4);
+          i++
+        ) {
+          const jp = jpSubs[i];
+          // Find matching FR sub by overlap
+          const fr = frSubs.find((s) => s.start < jp.end && s.end > jp.start);
+          result.push({
+            jp: jp.text,
+            fr: fr ? fr.text : "",
+            offset: i - idx,
+          });
+        }
+        return result;
+      }
+
+      function quickAsk(prompt) {
+        const ta = document.getElementById("aiInput");
+        ta.value = prompt;
+        ta.style.height = "auto";
+        ta.style.height = Math.min(ta.scrollHeight, 100) + "px";
+        setTimeout(sendChat, 0);
+      }
+
+      async function sendChat() {
+        if (aiStreaming) return;
+        const input = document.getElementById("aiInput");
+        const text = input.value.trim();
+        if (!text) return;
+
+        input.value = "";
+        input.style.height = "auto";
+
+        // Trim history to last N messages before sending (keeps token cost low)
+        if (aiMessages.length > AI_MAX_HISTORY) {
+          aiMessages = aiMessages.slice(-AI_MAX_HISTORY);
+        }
+
+        // Snapshot context at send time
+        updateAIContext();
+        const contextSubs = getContextSubs();
+
+        // Add user message to UI + history
+        aiMessages.push({ role: "user", content: text });
+        appendMessage("user", text);
+
+        // Create assistant bubble for streaming
+        const assistantEl = appendMessage("assistant", "");
+        const bodyEl = assistantEl.querySelector(".ai-msg-body");
+
+        aiStreaming = true;
+        document.getElementById("aiSendBtn").disabled = true;
+        document.getElementById("aiDot").classList.add("active");
+
+        let fullResponse = "";
+
+        try {
+          const resp = await fetch(`${SERVER}/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              current_jp: lastJP,
+              current_fr: lastFR,
+              context_subs: contextSubs,
+              selected_word: aiSelectedWord,
+              selected_meaning: aiSelectedMeaning,
+              messages: aiMessages,
+            }),
+          });
+
+          if (!resp.ok) {
+            const err = await resp
+              .json()
+              .catch(() => ({ error: resp.statusText }));
+            throw new Error(err.error || resp.statusText);
+          }
+
+          const reader = resp.body.getReader();
+          const decoder = new TextDecoder();
+          let buf = "";
+
+          outer: while (true) {
+            const { done: streamDone, value } = await reader.read();
+            if (streamDone) break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split("\n");
+            buf = lines.pop();
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const data = line.slice(6).trim();
+              if (data === "[DONE]") break outer;
+              try {
+                const chunk = JSON.parse(data);
+                if (chunk.error) throw new Error(chunk.error);
+                if (chunk.text) {
+                  fullResponse += chunk.text;
+                  bodyEl.textContent = fullResponse;
+                  document.getElementById("aiMessages").scrollTop = 99999;
+                }
+              } catch (e) {
+                /* ignore partial chunks */
+              }
+            }
+          }
+
+          if (fullResponse) {
+            aiMessages.push({ role: "assistant", content: fullResponse });
+          }
+        } catch (err) {
+          bodyEl.textContent = `Erreur : ${err.message}`;
+          bodyEl.style.color = "#f77e7e";
+          aiMessages.pop(); // remove failed user message
+          console.error("Chat error:", err);
+        } finally {
+          aiStreaming = false;
+          const sendBtn = document.getElementById("aiSendBtn");
+          if (sendBtn) {
+            sendBtn.disabled = false;
+            sendBtn.style.opacity = "";
+            sendBtn.style.pointerEvents = "";
+          }
+          document.getElementById("aiDot").classList.remove("active");
+          document.getElementById("aiInput").focus();
+        }
+      }
+
+      function appendMessage(role, text) {
+        const msgs = document.getElementById("aiMessages");
+        const div = document.createElement("div");
+        div.className = `ai-msg ${role}`;
+        div.innerHTML = `
+    <div class="ai-msg-role">${role === "user" ? "Vous" : "AI"}</div>
+    <div class="ai-msg-body">${esc(text)}</div>
+  `;
+        // For assistant streaming, we need live textContent updates — unescaped
+        if (role === "assistant") {
+          div.querySelector(".ai-msg-body").textContent = text;
+        }
+        msgs.appendChild(div);
+        msgs.scrollTop = msgs.scrollHeight;
+        return div;
+      }
+
+      // Wire up AI input — runs immediately since script is at end of body
+      (function wireAIInput() {
+        const ta = document.getElementById("aiInput");
+        const btn = document.getElementById("aiSendBtn");
+
+        if (ta) {
+          ta.addEventListener("input", function () {
+            this.style.height = "auto";
+            this.style.height = Math.min(this.scrollHeight, 100) + "px";
+          });
+          ta.addEventListener("keydown", function (e) {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              e.stopPropagation();
+              sendChat();
+            }
+          });
+        }
+
+        if (btn) {
+          btn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            sendChat();
+          });
+        }
+      })();
+
       // ═══════════════════════════
       // KEYBOARD
       // ═══════════════════════════
       function onKey(e) {
-        if (e.target.tagName === "INPUT") return;
+        if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")
+          return;
         const vid = document.getElementById("vid");
         if (e.code === "Space") {
           e.preventDefault();
@@ -1484,6 +2115,7 @@
         if (e.key === "g") adjOff("fr", +0.5);
         if (e.key === "1") togSub("jp");
         if (e.key === "2") togSub("fr");
+        if (e.key === "a") toggleAIPanel();
       }
 
       // ═══════════════════════════
