@@ -94,10 +94,10 @@ def anki_store_media(filename, data_b64):
     if r.get('error'):
         raise RuntimeError(f'storeMediaFile: {r["error"]}')
 
-def anki_add_note(fields, tags):
+def anki_add_note(fields, tags, model='SubMining'):
     r = anki('addNote', note={
         'deckName':  'JapaneseMining',
-        'modelName': 'SubMining',
+        'modelName': model,
         'fields':    fields,
         'options':   {'allowDuplicate': False, 'duplicateScope': 'deck'},
         'tags':      tags,
@@ -128,6 +128,8 @@ class Handler(SimpleHTTPRequestHandler):
         p = urlparse(self.path)
         if p.path == '/anki/add-card':
             self._anki_add()
+        elif p.path == '/anki/add-llm-card':
+            self._anki_add_llm()
         elif p.path == '/chat':
             self._chat()
         else:
@@ -286,6 +288,118 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({'success': False, 'error': msg})
         except Exception as e:
             self._log(f'  ✗ {e}')
+            self.send_json({'success': False, 'error': str(e)})
+
+    # ── /anki/add-llm-card ────────────────────────────────────────────────────
+
+    def _anki_add_llm(self):
+        length = int(self.headers.get('Content-Length', 0))
+        if not length:
+            self.send_json({'success': False, 'error': 'Empty body'}, 400); return
+        try:
+            payload = json.loads(self.rfile.read(length).decode('utf-8'))
+        except Exception as e:
+            self.send_json({'success': False, 'error': f'Bad JSON: {e}'}, 400); return
+
+        question       = payload.get('question', '').strip()
+        answer         = payload.get('answer', '').strip()
+        source         = payload.get('source', '')
+        video_path     = payload.get('video_path', '').strip()
+        start_time     = float(payload.get('start_time', 0))
+        end_time       = float(payload.get('end_time', 0))
+        screenshot_b64 = payload.get('screenshot', '')
+
+        if not question or not answer:
+            self.send_json({'success': False, 'error': 'question and answer required'}, 400); return
+
+        uid       = uuid.uuid4().hex[:10]
+        warnings  = []
+        audio_field = ''
+        image_field = ''
+
+        video_ok = video_path and os.path.isfile(video_path)
+        if video_path and not video_ok:
+            warnings.append(f'Video not found: {video_path}')
+            self._log(f'  ⚠ Video not found: {video_path}')
+
+        with tempfile.TemporaryDirectory() as tmp:
+
+            # Screenshot
+            img_path = None
+            if screenshot_b64:
+                img_path = os.path.join(tmp, f'img_{uid}.jpg')
+                try:
+                    raw = screenshot_b64.split(',', 1)[-1]
+                    with open(img_path, 'wb') as f:
+                        f.write(base64.b64decode(raw))
+                    self._log('  ✓ Screenshot ← canvas')
+                except Exception as e:
+                    warnings.append(f'Screenshot decode: {e}')
+                    img_path = None
+
+            if img_path is None and video_ok:
+                img_path = os.path.join(tmp, f'img_{uid}.jpg')
+                try:
+                    mid = (start_time + end_time) / 2
+                    extract_screenshot(video_path, mid, img_path)
+                    self._log(f'  ✓ Screenshot ← FFmpeg @{mid:.2f}s')
+                except Exception as e:
+                    warnings.append(f'FFmpeg screenshot: {e}')
+                    img_path = None
+
+            # Audio
+            audio_path = None
+            if video_ok and end_time > start_time:
+                audio_path = os.path.join(tmp, f'audio_{uid}.mp3')
+                try:
+                    extract_audio(video_path, start_time, end_time, audio_path)
+                    self._log(f'  ✓ Audio ← FFmpeg ({end_time-start_time:.2f}s)')
+                except Exception as e:
+                    warnings.append(f'FFmpeg audio: {e}')
+                    audio_path = None
+
+            # Upload to Anki
+            if img_path and os.path.isfile(img_path):
+                try:
+                    fname = f'llm_img_{uid}.jpg'
+                    anki_store_media(fname, to_b64(img_path))
+                    image_field = f'<img src="{fname}">'
+                    self._log(f'  ✓ Image → Anki: {fname}')
+                except Exception as e:
+                    warnings.append(f'Image upload: {e}')
+
+            if audio_path and os.path.isfile(audio_path):
+                try:
+                    fname = f'llm_audio_{uid}.mp3'
+                    anki_store_media(fname, to_b64(audio_path))
+                    audio_field = f'[sound:{fname}]'
+                    self._log(f'  ✓ Audio → Anki: {fname}')
+                except Exception as e:
+                    warnings.append(f'Audio upload: {e}')
+
+        try:
+            note_id = anki_add_note(
+                fields={
+                    'Question': question,
+                    'Answer':   answer,
+                    'Audio':    audio_field,
+                    'Image':    image_field,
+                    'Source':   source,
+                },
+                tags=['llm_explain'],
+                model='LLMExplain',
+            )
+            self._log(f'✓ LLM card #{note_id} | audio={bool(audio_field)} img={bool(image_field)}')
+            if warnings: self._log(f'  ⚠ {warnings}')
+            self.send_json({'success': True, 'note_id': note_id,
+                            'has_audio': bool(audio_field), 'has_image': bool(image_field),
+                            'warnings': warnings})
+        except ConnectionRefusedError:
+            msg = f'Anki unreachable at {ANKI_URL} — is Anki open?'
+            self._log(f'  ✗ {msg}')
+            self.send_json({'success': False, 'error': msg})
+        except Exception as e:
+            self._log(f'  ✗ LLM card: {e}')
             self.send_json({'success': False, 'error': str(e)})
 
     # ── /chat ─────────────────────────────────────────────────────────────────
